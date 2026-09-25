@@ -1,0 +1,70 @@
+import numpy as np
+import pandas as pd
+from scipy.integrate import solve_ivp
+
+# Parâmetros Cinéticos (Tabela 5)
+
+K_mL = 17.1            # g·L^-1
+K_iL_glicose = 47.2    # g·L^-1
+K_iL_maltose = 12.2    # g·L^-1
+k_d_a = 0.046          # min^-1
+k_d_a_star = 0.00097   # min^-1
+V_mL_a = 5402.4        # g·L^-1·min^-1
+V_mL_a_star = 2640.84  # g·L^-1·min^-1
+
+
+# Sistema de EDO
+
+def modelo_liquefacao(t, y):
+    C_amido, C_a, C_a_star, C_glicose, C_maltose = y
+
+    # Garante concentrações não-negativas
+    C_amido = max(0.0, C_amido)
+    C_a = max(0.0, C_a)
+    C_a_star = max(0.0, C_a_star)
+    C_glicose = max(0.0, C_glicose)
+    C_maltose = max(0.0, C_maltose)
+
+    # Equação (18) e Equação (16)
+    V_mL = V_mL_a * C_a + V_mL_a_star * C_a_star
+    denominador = K_mL + C_amido * (1.0 + (C_glicose / K_iL_glicose) + (C_maltose / K_iL_maltose))
+    r_L = (C_a * C_amido * V_mL) / denominador
+
+    # Balanços de massa
+    dC_amido_dt = -r_L
+    dC_a_dt = -k_d_a * C_a                             # Equação (19)
+    dC_a_star_dt = k_d_a * C_a - k_d_a_star * C_a_star # Equação (20)
+    dC_glicose_dt = 0.15 * r_L
+    dC_maltose_dt = 0.45 * r_L
+
+    return [dC_amido_dt, dC_a_dt, dC_a_star_dt, dC_glicose_dt, dC_maltose_dt]
+
+
+# Condições Iniciais e Simulação
+
+C_amido_0 = 300.0  # g/L
+C_a_0 = 0.05       # Concentração/fração de enzima ativa
+C_a_star_0 = 0.0
+C_glicose_0 = 0.0
+C_maltose_0 = 0.0
+
+y0 = [C_amido_0, C_a_0, C_a_star_0, C_glicose_0, C_maltose_0]
+
+# Pontos de tempo para amostragem dos valores (em minutos)
+t_eval = [0, 10, 20, 30, 45, 60, 90, 120, 150, 180]
+
+sol = solve_ivp(modelo_liquefacao, (0, 180), y0, t_eval=t_eval, method='RK45')
+
+
+# Exibição dos Valores
+
+df = pd.DataFrame({
+    'Tempo (min)': sol.t,
+    'Amido (g/L)': np.round(sol.y[0], 2),
+    'Glicose (g/L)': np.round(sol.y[3], 2),
+    'Maltose (g/L)': np.round(sol.y[4], 2),
+    'Enzima Ativa (C_a)': np.round(sol.y[1], 4),
+    'Enzima Interm. (C_a*)': np.round(sol.y[2], 4)
+})
+
+print(df.to_string(index=False))
